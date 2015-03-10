@@ -58,6 +58,10 @@ class Flight():
             self.ao = np.array(abf['in 10'])
         else:
             self.ao = np.array(abf['ao1'])
+        
+        self.n_first_trials = 40
+        
+        # add exception for 30 trials for the spot position change
             
             
 
@@ -76,7 +80,7 @@ class Flight():
            
 #---------------------------------------------------------------------------#
 
-class Spot_Position_Flight(Flight):
+class Spot_Adaptation_Flight(Flight):
     
     def process_fly(self,ex_i=[]):  #does this interfere with the Flight_Phys init?
         self.open_abf(ex_i)
@@ -153,7 +157,7 @@ class Spot_Position_Flight(Flight):
         start_diff = np.diff(tr_start)
         redundant_starts = tr_start[np.where(start_diff < 1000)]
         clean_tr_start_candidates = np.setdiff1d(tr_start,redundant_starts)+1
-        clean_tr_starts = clean_tr_start_candidates[np.where(self.ao[clean_tr_start_candidates+50] > 3)]
+        clean_tr_starts = clean_tr_start_candidates[np.where(self.ao[clean_tr_start_candidates+50] > 2)]
         
         
         tr_stop = self.samples[np.where(ao_diff < ao_d_lower_bound)]
@@ -162,7 +166,7 @@ class Spot_Position_Flight(Flight):
         #now check that the y value is > -9 
         clean_tr_stop_candidates = np.setdiff1d(tr_stop,redundant_stops)+1
         
-        clean_tr_stops = clean_tr_stop_candidates[np.where(self.ao[clean_tr_stop_candidates-50] > 3)]
+        clean_tr_stops = clean_tr_stop_candidates[np.where(self.ao[clean_tr_stop_candidates-50] > 2)]
         
         #check that first start is before first stop
         if clean_tr_stops[0] < clean_tr_starts[0]: 
@@ -197,11 +201,26 @@ class Spot_Position_Flight(Flight):
     def parse_stim_type(self):
         #calculate the stimulus type
        
-       
-        stim_types_labels =['right, middle height',
-                            'left, middle height',
-                            'right, top height',
-                            'left, top height']
+        if self.protocol == '1/f grating':
+            stim_types_labels =['right 1/f grating',
+                        'left 1/f grating',
+                        'right middle spot',
+                        'left middle spot',
+                        'right middle spot',
+                        'left middle spot']
+                        
+        elif self.protocol == 'looming':
+            stim_types_labels =['center looming',
+                        'right middle spot',
+                        'left middle spot',]
+                            
+        else: # grating iti
+            stim_types_labels =['right, middle height',
+                                'left, middle height',
+                                'right, top height',
+                                'left, top height']
+                            
+                            
         
         stim_types = -1*np.ones(self.n_trs,'int')
         
@@ -224,8 +243,7 @@ class Spot_Position_Flight(Flight):
         
         self.stim_types = stim_types  #change to integer, although nans are also useful
         self.stim_types_labels = stim_types_labels
-           
-   
+            
     def plot_wba_by_cnd(self,title_txt='',wba_lim=[-1.5,1.5],if_save=True): 
         # plot the first 30 trials (types 1 and 2) separately in the first row
         # then plot the four conditions in rows two and three
@@ -239,11 +257,28 @@ class Spot_Position_Flight(Flight):
         #get all traces and detect saccades ______________________________________________
         all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=False)
                 
-        n_rows = 3
+        
         n_cols = 2 
         
+        if self.protocol == '1/f grating':
+            cnds_to_plot = np.asarray([[3,2],[3,2],[1,0]])
+            n_rows = 3
+            gs = gridspec.GridSpec(n_rows*2,n_cols,height_ratios=[1,.3,1,.3,1,.3])
+        elif self.protocol == 'grating iti':
+            cnds_to_plot = np.asarray([[1,0],[1,0]])
+            n_rows = 2
+            gs = gridspec.GridSpec(n_rows*2,n_cols,height_ratios=[1,.3,1,.3,])
+        elif self.protocol == 'looming':
+            cnds_to_plot = np.asarray([[2,1],[2,1],[0,0]])
+            n_rows = 3
+            gs = gridspec.GridSpec(n_rows*2,n_cols,height_ratios=[1,.3,1,.3,1,.3])
+        elif self.protocol == 'control':
+            cnds_to_plot = np.asarray([[1,0],[1,0],[1,0],[3,2]])
+            n_rows = 4
+            gs = gridspec.GridSpec(n_rows*2,n_cols,height_ratios=[1,.3,1,.3,1,.3,1,.3])
+        
         fig = plt.figure(figsize=(9.5,11.5))       #(16.5, 9))
-        gs = gridspec.GridSpec(n_rows*2,n_cols,height_ratios=[1,.3,1,.3,1,.3])
+        
         gs.update(wspace=0.1, hspace=0.2) # set the spacing between axes. 
         
         #store all subplots for formatting later           
@@ -251,18 +286,27 @@ class Spot_Position_Flight(Flight):
         all_stim_ax = np.empty([n_rows,n_cols],dtype=plt.Axes)
         
         #set order of stimuli to plot
-        cnds_to_plot = np.asarray([[1,0],[1,0],[3,2]])
+        
+
+    
     
         # now loop through the conditions/columns ____________________________________
         for row in range(n_rows):
             for col in range(n_cols):
                 cnd = cnds_to_plot[row][col]
               
+                if self.protocol == 'looming' and row == 2 and col == 1:
+                    continue
+              
                 #set trial range
                 if row == 0:
-                    this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(0,30),cnd,'lmr')].columns.get_level_values(1).tolist()
+                    this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(0,self.n_first_trials),cnd,'lmr')].columns.get_level_values(1).tolist()
+                elif row == 1 and self.protocol == 'control':
+                    this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(self.n_first_trials,80),cnd,'lmr')].columns.get_level_values(1).tolist()
+                elif row == 2 and self.protocol == 'control':
+                    this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(80,100),cnd,'lmr')].columns.get_level_values(1).tolist()
                 else:
-                    this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(30,self.n_trs),cnd,'lmr')].columns.get_level_values(1).tolist()
+                    this_cnd_trs = all_fly_traces.loc[:,('this_fly',slice(self.n_first_trials,self.n_trs),cnd,'lmr')].columns.get_level_values(1).tolist()
                 
                 n_cnd_trs = np.size(this_cnd_trs)
                 
@@ -299,7 +343,7 @@ class Spot_Position_Flight(Flight):
                     stim_ax.plot(all_fly_traces.loc[::10,('this_fly',tr,cnd,'xstim')],color=this_color)
                     
                     # also plot ao levels as a sanity check
-                    stim_ax.plot(all_fly_traces.loc[::10,('this_fly',tr,cnd,'ao')],color=blue)
+                    #stim_ax.plot(all_fly_traces.loc[::10,('this_fly',tr,cnd,'ao')],color=blue)
                 
                 
                 # now plot the condition mean ____________________________________________
@@ -321,6 +365,9 @@ class Spot_Position_Flight(Flight):
                 
                 #exclude blank axes
                 cnd = cnds_to_plot[row][col]
+                
+                if self.protocol == 'looming' and row == 2 and col == 1:
+                    continue
                 
                 # remove all time xticklabels __________________________________
                 all_wba_ax[row][col].tick_params(labelbottom='off')
@@ -346,7 +393,10 @@ class Spot_Position_Flight(Flight):
          
                     formatter = FuncFormatter(div_sample_rate) 
                     
-                    all_wba_ax[row][col].set_xlim([0, .8*sampling_rate/10]) #enforce max time
+                    if self.protocol == 'looming':
+                        all_wba_ax[row][col].set_xlim([0, 1.1*sampling_rate/10]) #enforce max time
+                    else:
+                        all_wba_ax[row][col].set_xlim([0, 1*sampling_rate/10]) #enforce max time
                     
                     all_stim_ax[row][col].xaxis.set_major_formatter(formatter)
                     
@@ -364,8 +414,19 @@ class Spot_Position_Flight(Flight):
                 #fig.text(.1,.95,'Left visual field, moving left',fontsize=16)
                 #fig.text(.75,.95,'Right visual field, moving right',fontsize=16)
             
-                fig.text(.01,.87,'Trials 1-15',fontsize=14)
-                fig.text(.01,.6,'Trials 16-end',fontsize=14)
+                
+                if self.protocol == 'grating iti':
+                    fig.text(.01,.87,'Trials 1-'+str(self.n_first_trials)+', bar iti',fontsize=14)
+                    fig.text(.01,.6,'Trials ' + str(self.n_first_trials+1)+ '-end, grating iti',fontsize=14)
+                elif self.protocol == 'control':
+                    fig.text(.01,.87,'Trials 1-40',fontsize=14)
+                    fig.text(.01,.6,'Trials 41-80',fontsize=14)
+                    fig.text(.01,.33,'Trials 101-120',fontsize=14)
+                else:
+                    fig.text(.01,.87,'Trials 1-'+str(self.n_first_trials),fontsize=14)
+                    fig.text(.01,.6,'Trials ' + str(self.n_first_trials+1) + '-end',fontsize=14)
+                
+                
                 #fig.text(.065,.33,'Spot',fontsize=16)
     
                 figure_txt = title_txt
@@ -378,9 +439,54 @@ class Spot_Position_Flight(Flight):
                     saveas_path = '/Users/jamie/bin/figures/'
                     plt.savefig(saveas_path + figure_txt + '_feature_behavior_search.png',\
                                     bbox_inches='tight',dpi=100) 
-
-                                         
-    
+        
+    def plot_flight_over_time(self,title_txt='',wba_lim=[-1.5,1.5],if_save=True): 
+        # plot the first 30 trials (types 1 and 2) separately in the first row
+        # then plot the four conditions in rows two and three
+        
+        sampling_rate = 1000            # in hertz ********* move to fly info
+        s_iti = .25 * sampling_rate      # ********* move to fly info
+        
+        baseline_win = range(0,int(s_iti)) 
+        
+        #get all traces and detect saccades ______________________________________________
+        all_fly_traces, all_fly_saccades = self.get_traces_by_stim('this_fly',s_iti,get_saccades=False)
+                
+        # if self.protocol == '1/f grating':
+#             cnds_to_plot = np.asarray([[3,2],[3,2],[1,0]])
+#         elif self.protocol == 'grating iti':
+#             cnds_to_plot = np.asarray([[1,0],[1,0]])
+#         elif self.protocol == 'looming':
+#             cnds_to_plot = np.asarray([[2,1],[2,1],[0,0]])
+#         elif self.protocol == 'control':
+#             cnds_to_plot = np.asarray([[1,0],[1,0],[1,0],[3,2]])
+        
+        fig = plt.figure(figsize=(9.5,11.5))       #(16.5, 9))
+        
+        cnds_to_plot = [2,3,0,1]
+        all_colors = [blue,magenta,green,black]
+         
+        for cnd,cnd_i in zip(cnds_to_plot,range(np.size(cnds_to_plot))):
+            # now loop through the trials/cnd
+            this_cnd_tr_ns = all_fly_traces.loc[:,('this_fly',slice(None),cnd,'lmr')].columns.get_level_values(1).tolist()
+            
+            this_color = all_colors[cnd_i]
+            
+            for tr_n, i in zip(this_cnd_tr_ns,range(np.size(this_cnd_tr_ns))):
+                wba_trace = all_fly_traces.loc[:,('this_fly',tr_n,slice(None),'lmr')]
+                
+                baseline = np.nanmean(wba_trace.loc[baseline_win,:])
+                turn_win = np.nanmean(wba_trace.loc[range(500,650),:]) - baseline  
+         
+                plt.plot(tr_n,turn_win,'.',markersize=12,color=this_color)
+                plt.axhline(linewidth=.5, color=black)
+                
+        plt.xlabel('Trial number')
+        plt.ylabel('L-R WBA in turn window')   
+        
+        for cnd in range(np.size(cnds_to_plot)):
+            fig.text(.7,.85-.03*cnd,self.stim_types_labels[cnd],color=all_colors[cnds_to_plot[cnd]],fontsize=14) 
+        
     def get_traces_by_stim(self,fly_name='this_fly',iti=25000,get_saccades=False):
     # here extract the traces for each of the stimulus times. 
     # align to looming start, and add the first pre stim and post stim intervals
@@ -435,10 +541,6 @@ class Spot_Position_Flight(Flight):
         return fly_df, fly_saccades_df 
        
         
-     
-        
-    
-
 #---------------------------------------------------------------------------#
 def moving_average(values, window):
     #next add gaussian, kernals, etc
@@ -600,9 +702,6 @@ def get_pop_traces_df(path_name, population_f_names):
             fly_df, saccades_df = fly.get_traces_by_stim(g+' __ '+str(index))
             population_df = pd.concat([population_df,fly_df],axis=1)
     return population_df
-     
-     
-     
      
 def plot_pop_flight_behavior_histograms(population_df, wba_lim=[-3,3],cnds_to_plot=range(9)):  
     #for the looming data, plot histograms over time of all left-right
