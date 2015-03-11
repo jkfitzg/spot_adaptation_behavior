@@ -441,8 +441,12 @@ class Spot_Adaptation_Flight(Flight):
                                     bbox_inches='tight',dpi=100) 
         
     def plot_flight_over_time(self,title_txt='',wba_lim=[-1.5,1.5],if_save=True): 
-        # plot the first 30 trials (types 1 and 2) separately in the first row
-        # then plot the four conditions in rows two and three
+        # clean this up --
+        # first store all points by vectorizing
+        # change from plot -> get with boolean for plotting
+        # make a separate function for plotting the population change over time
+        
+        
         
         sampling_rate = 1000            # in hertz ********* move to fly info
         s_iti = .25 * sampling_rate      # ********* move to fly info
